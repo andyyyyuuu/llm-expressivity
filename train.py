@@ -1,11 +1,85 @@
 from nnsight import LanguageModel
+from dists import optimize_vanilla, set_seed
+from tqdm import tqdm
+import torch
+from dotenv import load_dotenv
+import os
 
-model = LanguageModel("meta-llama/Llama-3.2-1B", device_map="auto", dispatch=True)
+load_dotenv()
 
-# toy intervention for now
+DO_WANDB = os.getenv("DO_WANDB", "0") == "1"
 
-with model.trace("Hello"):
-    model.model.layers[5].output[0][:] = 0
-    logits = model.output.save()
+if DO_WANDB:
+    import wandb
+    wandb.login(key=os.getenv("WANDB_API_KEY"))
 
-print(logits.logits.shape)
+
+def run_experiment(model: LanguageModel, target_entropy: float, prefix_length: int=5, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20) -> tuple[torch.nn.Parameter, float]:
+
+    if DO_WANDB:
+        wandb.init(project="expressivity-of-llms", 
+                   config={
+                       "target_entropy": target_entropy,
+                       "prefix_length": prefix_length,
+                       "lr": lr,
+                   })
+
+    for param in model.model.parameters():
+        param.requires_grad = False
+    
+    vocab_size = model.config.vocab_size
+    embed_size = model.config.hidden_size
+    target_logits = optimize_vanilla(target_entropy, dist_size=vocab_size, epsilon=1e-6)
+    target_logits.requires_grad = False
+    target_log_probs = torch.log_softmax(target_logits, dim=-1)
+    
+    soft_prompt = torch.nn.Parameter(torch.randn(prefix_length, embed_size, device=model.device), requires_grad=True)
+    target_log_probs = target_log_probs.to(model.device)
+
+    optimizer = torch.optim.Adam([soft_prompt], lr=lr)
+    loss_fn = torch.nn.KLDivLoss(log_target=True)
+
+    no_improvement_count = 0
+    best_loss = float('inf')
+    best_prompt = None
+
+    for epoch in tqdm(range(max_epochs)):
+        with model.trace(torch.tensor([[0] * prefix_length])): 
+            model.model.embed_tokens.output = soft_prompt.unsqueeze(0) # (1, L, H)
+            logits = model.output.save() # (1, L, V)
+        final_logits = logits.logits.squeeze(0)[-1, :] # (V)
+        log_probs = torch.log_softmax(final_logits, dim=-1)
+        loss = loss_fn(log_probs, target_log_probs)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        if epoch % 10 == 0:
+            tqdm.write(f"Epoch {epoch}, Loss: {loss.item()}")
+        
+        if loss.item() < best_loss:
+            best_loss = loss.item()
+            best_prompt = soft_prompt.detach().clone()
+            no_improvement_count = 0
+        else:
+            no_improvement_count += 1
+        if DO_WANDB:
+            wandb.log({
+                "loss": loss.item(),
+            })
+        if no_improvement_count >= early_stop_patience:
+            tqdm.write(f"Early stopping at epoch {epoch}")
+            break
+    return best_prompt, best_loss
+
+
+if __name__ == "__main__":
+    set_seed(42)
+    model = LanguageModel("meta-llama/Llama-3.2-1B", device_map="auto", dispatch=True)
+    target_entropy = 10
+    prefix_length = 5
+    lr = 0.1
+    max_epochs = 500
+    early_stop_patience = 20
+    best_prompt, best_loss = run_experiment(model, target_entropy, prefix_length, lr, max_epochs, early_stop_patience)
+    print(f"Best prompt: {best_prompt}")
+    print(f"Best loss: {best_loss}")

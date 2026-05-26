@@ -2,3 +2,5 @@ huggingface-hub
 nnsight
 torch
 python-dotenv
+tqdm
+wandb
