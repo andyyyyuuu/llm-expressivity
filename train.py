@@ -29,7 +29,7 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length:
     
     vocab_size = model.config.vocab_size
     embed_size = model.config.hidden_size
-    target_logits = optimize_vanilla(target_entropy, dist_size=vocab_size, epsilon=1e-6)
+    target_logits = optimize_vanilla(target_entropy, dist_size=vocab_size, epsilon=1e-4)
     target_logits.requires_grad = False
     target_log_probs = torch.log_softmax(target_logits, dim=-1)
     
@@ -37,19 +37,19 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length:
     target_log_probs = target_log_probs.to(model.device)
 
     optimizer = torch.optim.Adam([soft_prompt], lr=lr)
-    loss_fn = torch.nn.KLDivLoss(log_target=True)
+    loss_fn = torch.nn.KLDivLoss(log_target=True, reduction="batchmean")
 
     no_improvement_count = 0
     best_loss = float('inf')
     best_prompt = None
 
-    for epoch in tqdm(range(max_epochs)):
+    for epoch in tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}"):
         with model.trace(torch.tensor([[0] * prefix_length])): 
             model.model.embed_tokens.output = soft_prompt.unsqueeze(0) # (1, L, H)
             logits = model.output.save() # (1, L, V)
         final_logits = logits.logits.squeeze(0)[-1, :] # (V)
         log_probs = torch.log_softmax(final_logits, dim=-1)
-        loss = loss_fn(log_probs, target_log_probs)
+        loss = loss_fn(log_probs.unsqueeze(0), target_log_probs.unsqueeze(0))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
