@@ -7,17 +7,17 @@ import os
 
 load_dotenv()
 
-DO_WANDB = os.getenv("DO_WANDB", "0") == "1"
+DO_WANDB = os.getenv("DO_WANDB_TRAINING", "0") == "1"
 
 if DO_WANDB:
     import wandb
     wandb.login(key=os.getenv("WANDB_API_KEY"))
 
 
-def run_experiment(model: LanguageModel, target_entropy: float, prefix_length: int=5, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20) -> tuple[torch.nn.Parameter, float]:
+def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length: int=5, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float]:
 
     if DO_WANDB:
-        wandb.init(project="expressivity-of-llms", 
+        wandb.init(project="expressivity-of-llms-training", 
                    config={
                        "target_entropy": target_entropy,
                        "prefix_length": prefix_length,
@@ -53,7 +53,7 @@ def run_experiment(model: LanguageModel, target_entropy: float, prefix_length: i
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        if epoch % 10 == 0:
+        if log_losses and epoch % 10 == 0:
             tqdm.write(f"Epoch {epoch}, Loss: {loss.item()}")
         
         if loss.item() < best_loss:
@@ -80,6 +80,6 @@ if __name__ == "__main__":
     lr = 0.1
     max_epochs = 500
     early_stop_patience = 20
-    best_prompt, best_loss = run_experiment(model, target_entropy, prefix_length, lr, max_epochs, early_stop_patience)
+    best_prompt, best_loss = tune_soft_prompt(model, target_entropy, prefix_length, lr, max_epochs, early_stop_patience)
     print(f"Best prompt: {best_prompt}")
     print(f"Best loss: {best_loss}")
