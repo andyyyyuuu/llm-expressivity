@@ -3,4 +3,4 @@ nnsight
 torch
 python-dotenv
 tqdm
-wandb
+# wandb (optional)
