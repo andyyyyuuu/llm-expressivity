@@ -43,7 +43,7 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length:
     best_loss = float('inf')
     best_prompt = None
 
-    for epoch in tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}"):
+    for epoch in tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}", leave=False):
         with model.trace(torch.tensor([[0] * prefix_length])): 
             model.model.embed_tokens.output = soft_prompt.unsqueeze(0) # (1, L, H)
             logits = model.output.save() # (1, L, V)
@@ -67,7 +67,8 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length:
                 "loss": loss.item(),
             })
         if no_improvement_count >= early_stop_patience:
-            tqdm.write(f"Early stopping at epoch {epoch}")
+            if log_losses:
+                tqdm.write(f"Early stopping at epoch {epoch}")
             break
     return best_prompt, best_loss
 
@@ -75,7 +76,7 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length:
 if __name__ == "__main__":
     set_seed(42)
     model = LanguageModel("meta-llama/Llama-3.2-1B", device_map="auto", dispatch=True)
-    target_entropy = 10
+    target_entropy = 0
     prefix_length = 5
     lr = 0.1
     max_epochs = 500
