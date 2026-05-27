@@ -1,5 +1,4 @@
 import csv
-import wandb
 from train import tune_soft_prompt
 from dotenv import load_dotenv
 import os

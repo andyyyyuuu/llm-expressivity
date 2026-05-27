@@ -3,4 +3,6 @@ nnsight
 torch
 python-dotenv
 tqdm
+ipykernel
+ipywidgets
 # wandb (optional)
