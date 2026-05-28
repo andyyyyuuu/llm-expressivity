@@ -219,3 +219,5 @@ __marimo__/
 
 wandb/
 saves/
+
+**/.DS_Store

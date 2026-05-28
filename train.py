@@ -1,6 +1,6 @@
 from nnsight import LanguageModel
 from dists import optimize_vanilla, set_seed
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import torch
 from dotenv import load_dotenv
 import os
@@ -29,12 +29,20 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length:
     
     vocab_size = model.config.vocab_size
     embed_size = model.config.hidden_size
-    target_logits = optimize_vanilla(target_entropy, dist_size=vocab_size, epsilon=1e-4)
+    model_dtype = model.model.embed_tokens.weight.dtype
+    target_logits = optimize_vanilla(
+        target_entropy,
+        dist_size=vocab_size,
+        epsilon=1e-4,
+        device=model.device
+    )
     target_logits.requires_grad = False
     target_log_probs = torch.log_softmax(target_logits, dim=-1)
     
-    soft_prompt = torch.nn.Parameter(torch.randn(prefix_length, embed_size, device=model.device), requires_grad=True)
-    target_log_probs = target_log_probs.to(model.device)
+    soft_prompt = torch.nn.Parameter(
+        torch.randn(prefix_length, embed_size, device=model.device, dtype=model_dtype),
+        requires_grad=True,
+    )
 
     optimizer = torch.optim.Adam([soft_prompt], lr=lr)
     loss_fn = torch.nn.KLDivLoss(log_target=True, reduction="batchmean")
@@ -44,7 +52,8 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, prefix_length:
     best_prompt = None
 
     for epoch in tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}", leave=False):
-        with model.trace(torch.tensor([[0] * prefix_length])): 
+        input_ids = torch.zeros((1, prefix_length), dtype=torch.long, device=model.device)
+        with model.trace(input_ids):
             model.model.embed_tokens.output = soft_prompt.unsqueeze(0) # (1, L, H)
             logits = model.output.save() # (1, L, V)
         final_logits = logits.logits.squeeze(0)[-1, :] # (V)

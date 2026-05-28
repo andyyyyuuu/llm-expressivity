@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from math import log
 from pathlib import Path
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from nnsight import LanguageModel
 
 load_dotenv()
