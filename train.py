@@ -4,8 +4,7 @@ from tqdm.auto import tqdm
 import torch
 from dotenv import load_dotenv
 import os
-from dataclasses import dataclass
-from typing import Literal
+from config import InterventionConfig
 
 load_dotenv()
 
@@ -15,17 +14,6 @@ if DO_WANDB:
     import wandb
     wandb.login(key=os.getenv("WANDB_API_KEY"))
 
-
-@dataclass
-class InterventionConfig:
-    type: Literal["embed", "layer"]
-    layer: int = 0
-    prefix_length: int = 5
-
-    def __post_init__(self):
-        if self.type == "layer" and \
-          (self.layer < 0 or self.layer >= model.config.num_hidden_layers): 
-           raise ValueError(f"Layer {self.layer} out of range for {model.config.num_hidden_layers}-layer transformer")
 
 
 def intervene(model, patch: torch.Tensor, config: InterventionConfig) -> None: 
@@ -37,6 +25,8 @@ def intervene(model, patch: torch.Tensor, config: InterventionConfig) -> None:
 
 
 def tune_soft_prompt(model: LanguageModel, target_entropy: float, config: InterventionConfig, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float]:
+    
+    config.check_valid(model)
 
     if DO_WANDB:
         wandb.init(project="expressivity-of-llms-training", 
