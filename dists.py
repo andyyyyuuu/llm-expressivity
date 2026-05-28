@@ -1,14 +1,7 @@
 import torch
 from tqdm import tqdm
+from utils import entropy
 
-
-def set_seed(seed: int):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-def entropy(x: torch.Tensor, dim: int) -> torch.Tensor:
-    return -torch.sum(x * torch.log(x), dim=dim)
 
 def L(logits: torch.Tensor, targ_entropy: float) -> torch.Tensor:
     probs = torch.softmax(logits, dim=-1)
@@ -46,6 +39,7 @@ def optimize_vanilla(
         else:
             raise RuntimeError(f"Optimization failed to converge within {max_iters} iterations.")
     return param
+
 
 
 if __name__ == "__main__":

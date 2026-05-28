@@ -1,10 +1,10 @@
 from nnsight import LanguageModel
-from dists import optimize_vanilla, set_seed
 from tqdm.auto import tqdm
 import torch
 from dotenv import load_dotenv
 import os
 from config import InterventionConfig
+from utils import set_seed
 
 load_dotenv()
 
@@ -24,7 +24,7 @@ def intervene(model, patch: torch.Tensor, config: InterventionConfig) -> None:
         model.model.layers[config.layer].output[0] = patch
 
 
-def tune_soft_prompt(model: LanguageModel, target_entropy: float, config: InterventionConfig, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float]:
+def tune_soft_prompt(model: LanguageModel, target_entropy: float, target_logits: torch.Tensor, config: InterventionConfig, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float, bool]:
     
     config.check_valid(model)
 
@@ -42,12 +42,6 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, config: Interv
         param.requires_grad = False
     
     model_dtype = model.model.embed_tokens.weight.dtype
-    target_logits = optimize_vanilla(
-        target_entropy,
-        dist_size=model.config.vocab_size,
-        epsilon=1e-4,
-        device=model.device
-    )
     target_logits.requires_grad = False
     target_log_probs = torch.log_softmax(target_logits, dim=-1)
     
@@ -98,6 +92,8 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, config: Interv
 
 
 if __name__ == "__main__":
+    from dists import optimize_vanilla
+
     set_seed(42)
     model = LanguageModel("meta-llama/Llama-3.2-1B", device_map="auto", dispatch=True)
     target_entropy = 0.5
@@ -105,7 +101,8 @@ if __name__ == "__main__":
     lr = 0.1
     max_epochs = 500
     early_stop_patience = 20
-    best_prompt, best_loss, early_stopped = tune_soft_prompt(model, target_entropy, InterventionConfig(type="layer", layer=5, prefix_length=prefix_length), lr, max_epochs, early_stop_patience)
+    target_logits = optimize_vanilla(target_entropy, model.config.vocab_size, 1e-4, device=model.device)
+    best_prompt, best_loss, early_stopped = tune_soft_prompt(model, target_entropy, target_logits, InterventionConfig(type="layer", layer=5, prefix_length=prefix_length), lr, max_epochs, early_stop_patience)
     print(f"Best prompt: {best_prompt}")
     print(f"Best loss: {best_loss}")
     print(f"Early stopped: {early_stopped}")
