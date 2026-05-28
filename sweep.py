@@ -22,13 +22,14 @@ def get_range(start: float, end: float, step: float, round_to: int=12) -> list[f
 
 
 
-def load_targets(entropies: list[float], vocab_size: int, cache_path: str, device: torch.device | str, seed: int=216, epsilon: float=1e-4) -> list[tuple[float, torch.Tensor]]:
-
+def load_targets(entropies: list[float], vocab_size: int, cache_path: str, device: torch.device | str, epsilon: float=1e-4) -> list[tuple[float, torch.Tensor]]:
+    seed = int(os.getenv("TARGETS_SEED", "216"))
     if Path(cache_path).exists():
         loaded = torch.load(cache_path, map_location=device)
-
+        if loaded['seed'] != seed:
+            raise ValueError(f"cached targets have seed {loaded['seed']}, but requested {seed}")
         if len(loaded['targets']) != len(entropies):
-            raise ValueError(f"cached targets have {len(loaded['targets'])} entries, but {len(entropies)} were requested")
+            raise ValueError(f"cached targets have {len(loaded['targets'])} entries, but requested {len(entropies)}")
         
         print(f"loaded {len(loaded['targets'])} targets from {cache_path} with seed {loaded['seed']}")
         return loaded["targets"]
@@ -58,6 +59,7 @@ def run_experiment(save_path: str, intervention_config: InterventionConfig=Inter
         writer.writerow(["target_entropy", "best_loss", "early_stopped"])
         f.flush()
         for i in tqdm(range(len(target_dists)), desc=f"sweeping up to H<={target_dists[-1][0]:.2f}"):
+            set_seed(int(os.getenv("TRAINING_SEED", "216")) + i)
             best_prompt, best_loss, early_stopped = tune_soft_prompt(model, target_dists[i][0], target_dists[i][1], intervention_config, lr=0.1, max_epochs=500, early_stop_patience=20, log_losses=False)
             writer.writerow([target_dists[i][0], best_loss, int(early_stopped)])
             f.flush()

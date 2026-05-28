@@ -94,7 +94,7 @@ def tune_soft_prompt(model: LanguageModel, target_entropy: float, target_logits:
 if __name__ == "__main__":
     from dists import optimize_vanilla
 
-    set_seed(42)
+    set_seed(int(os.getenv("TRAINING_SEED", "216")))
     model = LanguageModel("meta-llama/Llama-3.2-1B", device_map="auto", dispatch=True)
     target_entropy = 0.5
     prefix_length = 5

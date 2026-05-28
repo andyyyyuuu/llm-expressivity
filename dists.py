@@ -1,6 +1,6 @@
 import torch
 from tqdm import tqdm
-from utils import entropy
+from utils import entropy, set_seed
 
 
 def L(logits: torch.Tensor, targ_entropy: float) -> torch.Tensor:
@@ -43,7 +43,7 @@ def optimize_vanilla(
 
 
 if __name__ == "__main__":
-    set_seed(42)
+    set_seed(216)
     param = optimize_vanilla(targ_entropy=0, dist_size=10, epsilon=1e-6)
     print(param)
     print(entropy(torch.softmax(param, dim=-1), dim=-1))
