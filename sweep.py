@@ -30,7 +30,7 @@ def get_range(start: float, end: float, step: float, round_to: int=12) -> list[f
 
 
 def load_targets(entropies: list[float], vocab_size: int, device: torch.device | str, epsilon: float=1e-4) -> list[tuple[float, torch.Tensor]]:
-    
+
     seed = int(os.getenv("TARGETS_SEED", "216"))
     cache_path = CACHE_PATH.format(vocab_size=vocab_size, seed=seed)
 
@@ -41,11 +41,11 @@ def load_targets(entropies: list[float], vocab_size: int, device: torch.device |
         if len(loaded['targets']) != len(entropies):
             raise ValueError(f"cached targets have {len(loaded['targets'])} entries, but requested {len(entropies)}")
         
-        print(f"loaded {len(loaded['targets'])} targets from {cache_path} with seed {loaded['seed']}")
+        tqdm.write(f"loaded {len(loaded['targets'])} targets from {cache_path} with seed {loaded['seed']}")
         return loaded["targets"]
     
     targets = []
-    print(f"synthesizing {len(entropies)} targets with seed {seed} and epsilon {epsilon} to {cache_path}")
+    tqdm.write(f"synthesizing {len(entropies)} targets with seed {seed} and epsilon {epsilon} to {cache_path}")
     for i, H in enumerate(tqdm(entropies, desc="synthesizing target logits")):
         set_seed(seed + i)
         targets.append((H, optimize_vanilla(H, vocab_size, epsilon, device=device)))
@@ -57,6 +57,7 @@ def load_targets(entropies: list[float], vocab_size: int, device: torch.device |
 
 
 def run_experiment(save_path: str, intervention_config: InterventionConfig=InterventionConfig(type="layer", layer=5, prefix_length=5)) -> None: 
+
     target_dists = load_targets(list(get_range(0, log(model.config.vocab_size), 0.05)), model.config.vocab_size, model.device)
 
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
@@ -71,17 +72,25 @@ def run_experiment(save_path: str, intervention_config: InterventionConfig=Inter
             f.flush()
 
 
-def sweep_hidden_layers(id: str, prefix_length: int=5) -> None: 
-    for layer in tqdm(range(model.config.num_hidden_layers), desc="sweeping hidden layers"):
+def sweep_hidden_layers(id: str, prefix_length: int=5, start: int = 0, end: int | None = None) -> None: 
+
+    if end is None:
+        end = model.config.num_hidden_layers
+    
+    if start < 0 or start >= end or end > model.config.num_hidden_layers or end < start:
+        raise ValueError(f"[{start}, {end}) is an invalid layer range for model with {model.config.num_hidden_layers} layers")
+
+    for layer in tqdm(range(start, end), desc=f"sweeping layers [{start}, {end})"):
         intervention_config = InterventionConfig(type="layer", layer=layer, prefix_length=prefix_length)
         save_path = Path("saves") / f"sweep_{id}_l{layer}.csv"
-        print(f"writing results to {save_path}")
+        tqdm.write(f"writing results to {save_path}")
         run_experiment(str(save_path), intervention_config)
+
 
 def sweep_embedding(id: str, prefix_length: int=5) -> None:
     intervention_config = InterventionConfig(type="embed", prefix_length=prefix_length)
     save_path = Path("saves") / f"sweep_{id}_embed.csv"
-    print(f"writing results to {save_path}")
+    tqdm.write(f"writing results to {save_path}")
     run_experiment(str(save_path), intervention_config)
 
 
@@ -89,5 +98,5 @@ if __name__ == "__main__":
     layer = 5
     intervention_config = InterventionConfig(type="layer", layer=layer, prefix_length=5)
     save_path = Path("saves") / f"sweep_{datetime.now().strftime('%Y%m%d_%H%M')}_l{layer}.csv"
-    print(f"writing results to {save_path}")
+    tqdm.write(f"writing results to {save_path}")
     run_experiment(str(save_path), intervention_config)
