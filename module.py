@@ -1,0 +1,89 @@
+# Run module.py to check the default model structure
+
+import torch
+from nnsight import LanguageModel
+from abc import abstractmethod, ABC
+
+
+class DownstreamModule(torch.nn.Module, ABC):
+    """Base class for downstream modules"""
+
+    @abstractmethod
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("Forward pass not implemented")
+    
+    @abstractmethod
+    def validate_input(self, x: torch.Tensor) -> None:
+        raise NotImplementedError("Input validation not implemented")
+
+
+
+class LMIntervention(DownstreamModule, ABC):
+    """Base class for interventions that need to load and trace model output"""
+
+    def __init__(self, model_name: str="meta-llama/Llama-3.2-1B", prefix_length: int=5):
+        super().__init__()
+        self.model = LanguageModel(model_name, device_map="auto", dispatch=True)
+        self.prefix_length = prefix_length
+    
+
+    @abstractmethod
+    def intervene(self, x: torch.Tensor) -> None:
+        raise NotImplementedError("Intervention not implemented")
+    
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self.validate_input(x)
+        dummy_input_ids = torch.zeros((1, self.prefix_length), dtype=torch.long, device=self.model.device)
+        with self.model.trace(dummy_input_ids):
+            self.intervene(x.unsqueeze(0))
+            logits = self.model.output.save() # (1, L, V)
+        final_logits = logits.logits.squeeze(0)[-1, :] # (V)
+        return final_logits
+    
+
+    def validate_input(self, x: torch.Tensor) -> None:
+        """Generic validation (L, H) for hidden state interventions and more"""
+        if x.shape != (self.prefix_length, self.model.config.hidden_size):
+            raise ValueError(f"Input tensor must be of shape (1, {self.prefix_length}, {self.model.config.hidden_size}), got {x.shape}")
+
+
+
+class LayerIntervention(LMIntervention):
+    """Between layers"""
+
+    def __init__(self, layer: int, model_name: str="meta-llama/Llama-3.2-1B", prefix_length: int=5):
+        super().__init__(model_name, prefix_length=prefix_length)
+        if layer < 0 or layer >= self.model.config.num_hidden_layers:
+            raise ValueError(f"Layer {layer} is not valid for model {model_name}")
+        self.layer = layer
+    
+    def intervene(self, x: torch.Tensor) -> None:
+        self.model.model.layers[self.layer].output[0] = x
+
+
+
+class EmbedIntervention(LMIntervention):
+    """In place of embeddings, before first layer"""
+
+    def __init__(self, model_name: str="meta-llama/Llama-3.2-1B", prefix_length: int=5):
+        super().__init__(model_name, prefix_length=prefix_length)
+    
+    def intervene(self, x: torch.Tensor) -> None:
+        self.model.model.embed_tokens.output = x
+
+
+class PostNormIntervention(LMIntervention):
+    """Post-RMSNorm final bits: unembed, softmax"""
+    
+    def __init__(self, model_name: str="meta-llama/Llama-3.2-1B", prefix_length: int=5):
+        super().__init__(model_name, prefix_length=prefix_length)
+    
+    def intervene(self, x: torch.Tensor) -> None:
+        self.model.model.norm.output = x
+    
+    
+
+
+if __name__ == "__main__":
+    print(LMIntervention().model.model)
