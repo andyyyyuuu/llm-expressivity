@@ -6,17 +6,15 @@ from datetime import datetime
 from math import log
 from pathlib import Path
 from tqdm.auto import tqdm
-from nnsight import LanguageModel
-from config import InterventionConfig
 import torch
 from dists import optimize_vanilla
 from utils import set_seed
+from module import DownstreamModule, LayerIntervention
 
 load_dotenv()
 
 from huggingface_hub import login
 login(token=os.getenv("HF_TOKEN"))
-model = LanguageModel("meta-llama/Llama-3.2-1B", device_map="auto", dispatch=True)
 
 CACHE_PATH = "saves/targets_{vocab_size}_{seed}.pt"
 
@@ -56,9 +54,9 @@ def load_targets(entropies: list[float], vocab_size: int, device: torch.device |
     return targets
 
 
-def run_experiment(save_path: str, intervention_config: InterventionConfig=InterventionConfig(type="layer", layer=5, prefix_length=5)) -> None: 
+def run_experiment(save_path: str, module: DownstreamModule) -> None: 
 
-    target_dists = load_targets(list(get_range(0, log(model.config.vocab_size), 0.05)), model.config.vocab_size, model.device)
+    target_dists = load_targets(list(get_range(0, log(module.vocab_size), 0.05)), module.vocab_size, module.device)
 
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with open(save_path, "w", newline="") as f:
@@ -67,36 +65,15 @@ def run_experiment(save_path: str, intervention_config: InterventionConfig=Inter
         f.flush()
         for i in tqdm(range(len(target_dists)), desc=f"sweeping up to H<={target_dists[-1][0]:.2f}"):
             set_seed(int(os.getenv("TRAINING_SEED", "216")) + i)
-            best_prompt, best_loss, early_stopped = tune_soft_prompt(model, target_dists[i][0], target_dists[i][1], intervention_config, lr=0.1, max_epochs=500, early_stop_patience=20, log_losses=False)
+            best_prompt, best_loss, early_stopped = tune_soft_prompt(module, target_dists[i][0], target_dists[i][1], lr=0.1, max_epochs=500, early_stop_patience=20, log_losses=False)
             writer.writerow([target_dists[i][0], best_loss, int(early_stopped)])
             f.flush()
 
 
-def sweep_hidden_layers(id: str, prefix_length: int=5, start: int = 0, end: int | None = None) -> None: 
-
-    if end is None:
-        end = model.config.num_hidden_layers
-    
-    if start < 0 or start >= end or end > model.config.num_hidden_layers or end < start:
-        raise ValueError(f"[{start}, {end}) is an invalid layer range for model with {model.config.num_hidden_layers} layers")
-
-    for layer in tqdm(range(start, end), desc=f"sweeping layers [{start}, {end})"):
-        intervention_config = InterventionConfig(type="layer", layer=layer, prefix_length=prefix_length)
-        save_path = Path("saves") / f"sweep_{id}_l{layer}.csv"
-        tqdm.write(f"writing results to {save_path}")
-        run_experiment(str(save_path), intervention_config)
-
-
-def sweep_embedding(id: str, prefix_length: int=5) -> None:
-    intervention_config = InterventionConfig(type="embed", prefix_length=prefix_length)
-    save_path = Path("saves") / f"sweep_{id}_embed.csv"
-    tqdm.write(f"writing results to {save_path}")
-    run_experiment(str(save_path), intervention_config)
-
 
 if __name__ == "__main__":
     layer = 5
-    intervention_config = InterventionConfig(type="layer", layer=layer, prefix_length=5)
+    module = LayerIntervention(layer=layer, prefix_length=5)
     save_path = Path("saves") / f"sweep_{datetime.now().strftime('%Y%m%d_%H%M')}_l{layer}.csv"
     tqdm.write(f"writing results to {save_path}")
-    run_experiment(str(save_path), intervention_config)
+    run_experiment(str(save_path), module)
