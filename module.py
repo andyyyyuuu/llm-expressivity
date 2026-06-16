@@ -69,6 +69,7 @@ class LMIntervention(DownstreamModule, ABC):
     
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.to(self.model.model.embed_tokens.weight.dtype)
         dummy_input_ids = torch.zeros((1, self.prefix_length), dtype=torch.long, device=self.model.device)
         with self.model.trace(dummy_input_ids):
             self.intervene(x.unsqueeze(0))
