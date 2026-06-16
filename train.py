@@ -4,7 +4,7 @@ import torch
 from dotenv import load_dotenv
 import os
 from utils import set_seed
-from module import DownstreamModule, LayerIntervention
+from modules import DownstreamModule, LayerIntervention
 
 load_dotenv()
 

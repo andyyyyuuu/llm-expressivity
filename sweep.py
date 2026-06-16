@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 import torch
 from dists import optimize_vanilla
 from utils import set_seed
-from module import DownstreamModule, LayerIntervention
+from modules import DownstreamModule, LayerIntervention
 
 load_dotenv()
 

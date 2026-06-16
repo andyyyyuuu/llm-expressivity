@@ -1,4 +1,4 @@
-# Run module.py to check the default model structure
+# Run modules.py to check the default model structure
 
 import torch
 from nnsight import LanguageModel
