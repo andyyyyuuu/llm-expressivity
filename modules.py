@@ -3,7 +3,7 @@
 import torch
 from nnsight import LanguageModel
 from abc import abstractmethod, ABC
-
+from utils import find_device, set_seed
 
 class DownstreamModule(torch.nn.Module, ABC):
     """Base class for downstream modules"""
@@ -121,8 +121,43 @@ class PostNormIntervention(LMIntervention):
     
     def __repr__(self) -> str:
         return f"PostNormIntervention()"
-    
 
+
+class LinearSoftmax(DownstreamModule):
+    """Randomly initialized linear layer + softmax"""
+    
+    def __init__(self, input_size: int, vocab_size: int, prefix_length: int=5, seed: int=216):
+        """Note: prefix_length is only used for shape checking;
+           we take the last hidden state regardless and ignore others"""
+        
+        super().__init__()
+        self._device = find_device()
+        set_seed(seed)
+        self.register_buffer("linear_w", torch.randn(input_size, vocab_size, device=self._device))
+        self._input_size = input_size
+        self._vocab_size = vocab_size
+        self.prefix_length = prefix_length
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_last = x[-1, :]
+        # Technically the other hidden states are wasted but I don't believe they'll be a significant
+        # overhead. 
+        return torch.log_softmax(x_last @ self.linear_w, dim=-1)
+    
+    def __repr__(self) -> str:
+        return f"LinearSoftmax(input_size={self._input_size}, vocab_size={self._vocab_size})"
+    
+    @property
+    def vocab_size(self) -> int:
+        return self._vocab_size
+    
+    @property
+    def input_shape(self) -> torch.Size:
+        return (self.prefix_length, self._input_size)
+    
+    @property
+    def device(self) -> torch.device:
+        return self._device
 
 if __name__ == "__main__":
-    print(LMIntervention().model.model)
+    print(PostNormIntervention().model.model)
