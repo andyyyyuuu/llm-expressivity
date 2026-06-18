@@ -30,6 +30,8 @@ I first partially replicate the results of [Figure 4 (c)](https://arxiv.org/html
 
 <img width="332" height="312" alt="" src="https://github.com/user-attachments/assets/19f4ff53-7470-43a7-815d-3e67cd3c8ede" />
 
+
+### Hidden Layers
 In my own analogous experiments, I tune injected values in the hidden layers of the transformer and investigate their expressivity. I find that the bottleneck on expressivity follows a nearly identical pattern even when I tune the output of the final layer of the transformer, and even when the intervention is placed after RMSNorm (shown below). This suggests that the cause of the phenomenon can be narrowed down to the final computations in a transformer (unembedding transform and softmax) and are largely not due to the multi-headed attention or other earlier components. 
 
 
@@ -38,9 +40,19 @@ In my own analogous experiments, I tune injected values in the hidden layers of 
 
 One curiousity worth pointing out is that although the shapes of the curves stayed identical when expressivity was measured from the embedding output v. the final layer's output, the faint downward trendline in the background of the former's scatter plot is not seen in the latter's. Spooky. 
 
-## Future Work
 
-If I feel like it, I'll do an intervention with a randomly initialized matrix and softmax to see how far this behaviour goes. 
+### Toy Linear + Softmax Model
+As a final check, I perform the experiment on a randomly initialized (by `torch.randn` standard normal distribution) linear layer and softmax, written as a standalone module instead of injected into Llama. The phenomenon is partially produced between target entropies of 6 and 10 nats, but a noisy peak occurs for lower values.
+
+<img width="590" height="483" alt="output" src="https://github.com/user-attachments/assets/f68801ae-5e5d-44f5-ab80-9bac64f1ae80" />
+
+In any case, this seems to be a fairly minimal setup for reproducing the effect. I have not yet ablated the unembedding matrix as that is the location of the information bottleneck. 
+
+## Discussion
+
+While these experiments do not fully explain Wang et al. (2025), they eliminate a few possible causes by observing similar results in only unembedding and softmax components. Specifically, the shape of the bottleneck is not due to attention or specific to transformers. 
+
+We should also consider the possibility that what Wang et al. (2025) observed may be an artifact of potential biases in the experiment, such as the coverage of the method used to generate distributions of a particular entropy. 
 
 ## Useful References
 
