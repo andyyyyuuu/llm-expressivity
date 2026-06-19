@@ -1,6 +1,6 @@
 import torch
 from tqdm import tqdm
-from utils import entropy, set_seed
+from .utils import entropy, set_seed
 
 
 def L(logits: torch.Tensor, targ_entropy: float) -> torch.Tensor:

@@ -3,8 +3,8 @@ from tqdm.auto import tqdm
 import torch
 from dotenv import load_dotenv
 import os
-from utils import set_seed
-from modules import DownstreamModule, LayerIntervention
+from .utils import set_seed
+from .modules import DownstreamModule, LayerIntervention
 
 load_dotenv()
 
@@ -71,7 +71,7 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
 
 
 if __name__ == "__main__":
-    from dists import optimize_vanilla
+    from .dists import optimize_vanilla
 
     set_seed(int(os.getenv("TRAINING_SEED", "216")))
     module = LayerIntervention(layer=5, prefix_length=5)

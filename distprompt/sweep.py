@@ -1,5 +1,5 @@
 import csv
-from train import tune_soft_prompt
+from .train import tune_soft_prompt
 from dotenv import load_dotenv
 import os
 from datetime import datetime
@@ -7,9 +7,9 @@ from math import log
 from pathlib import Path
 from tqdm.auto import tqdm
 import torch
-from dists import optimize_vanilla
-from utils import set_seed
-from modules import DownstreamModule, LayerIntervention
+from .dists import optimize_vanilla
+from .utils import set_seed
+from .modules import DownstreamModule, LayerIntervention
 
 load_dotenv()
 

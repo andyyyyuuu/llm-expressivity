@@ -3,7 +3,7 @@
 import torch
 from nnsight import LanguageModel
 from abc import abstractmethod, ABC
-from utils import find_device, set_seed
+from .utils import find_device, set_seed
 
 class DownstreamModule(torch.nn.Module, ABC):
     """Base class for downstream modules"""
