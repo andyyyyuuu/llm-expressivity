@@ -22,7 +22,7 @@ def run_experiment(save_path: str, module: DownstreamModule, targets: Targets) -
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with open(save_path, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["target_entropy", "best_loss", "early_stopped", "prompt"])
+        writer.writerow(["target_entropy", "best_loss", "early_stopped"])
         f.flush()
         for i, (H, target) in enumerate(tqdm(targets, desc=f"sweeping targets")):
             set_seed(int(os.getenv("TRAINING_SEED", "216")) + i)
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     from .targets import OptimEntropyGrid
     seed = int(os.getenv("TARGETS_SEED", "216"))
     module = LayerIntervention(layer=5, prefix_length=5)
-    targets = OptimEntropyGrid(module=module, seed=seed, is_outlier=False)
+    target_set = OptimEntropyGrid(module=module, seed=seed, is_outlier=False)
     save_path = Path("saves") / f"sweep_{datetime.now().strftime('%Y%m%d_%H%M')}_l5.csv"
     tqdm.write(f"writing results to {save_path}")
-    run_experiment(str(save_path), module, targets)
+    run_experiment(str(save_path), module, target_set)

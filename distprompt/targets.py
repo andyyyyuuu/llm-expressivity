@@ -94,9 +94,11 @@ class OptimEntropyGrid(Targets):
     def __init__(self, module: DownstreamModule, is_outlier: bool = False, seed: int | None = None) -> None:
         self.epsilon = 1e-4
         self.max_iters = 1e5
+        self.step = 0.05
         self.is_outlier = is_outlier
         self.entropies = list(get_range(0, log(module.vocab_size), 0.05))
         target_type = "optimentropygrid-outlier" if is_outlier else "optimentropygrid-vanilla"
+        target_type += f"-st{self.step}"
         super().__init__(target_type, module, seed)
     
     def _optimize_vanilla(self, target_entropy: float) -> torch.Tensor:
@@ -132,3 +134,21 @@ class OptimEntropyGrid(Targets):
         return targets
 
 
+class GaussianLogits(Targets):
+    """
+    Generates targets by sampling from a Gaussian distribution.
+    """
+    def __init__(self, module: DownstreamModule, samples: int, scale: float = 1.0, seed: int | None = None) -> None:
+        self.samples = samples
+        self.scale = scale
+        target_type = f"gaussianlogits-sc{scale:.2f}-n{samples}"
+        super().__init__(target_type, module, seed)
+    
+    def _generate(self) -> list[tuple[float, torch.Tensor]]:
+        targets = []
+        for i in range(self.samples):
+            set_seed(self.seed + i)
+            target_logits = self.scale * torch.randn(self.vocab_size, device=self.device, dtype=torch.float32)
+            H = entropy(torch.softmax(target_logits, dim=-1), dim=-1).item()
+            targets.append((H, target_logits))
+        return targets
