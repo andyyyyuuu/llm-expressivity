@@ -8,6 +8,9 @@ def set_seed(seed: int):
 def entropy(x: torch.Tensor, dim: int) -> torch.Tensor:
     return -torch.sum(x * torch.log(x), dim=dim)
 
+def log_entropy(x: torch.Tensor, dim: int) -> torch.Tensor:
+    return -torch.sum(x.exp() * x, dim=dim)
+
 def find_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")

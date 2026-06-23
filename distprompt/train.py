@@ -3,8 +3,9 @@ from tqdm.auto import tqdm
 import torch
 from dotenv import load_dotenv
 import os
-from .utils import set_seed
+from .utils import set_seed, log_entropy
 from .modules import DownstreamModule, LayerIntervention
+from typing import Callable
 
 load_dotenv()
 
@@ -15,7 +16,11 @@ if DO_WANDB:
     wandb.login(key=os.getenv("WANDB_API_KEY"))
 
 
-def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_logits: torch.Tensor, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float, bool]:
+def entropy_only_loss(x: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    return (log_entropy(x, dim=-1) - log_entropy(target, dim=-1)) ** 2
+
+
+def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_logits: torch.Tensor, loss_fn: Callable = None, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float, bool]:
     
     if DO_WANDB:
         wandb.init(project="expressivity-of-llms-training", 
@@ -35,7 +40,7 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
     )
 
     optimizer = torch.optim.Adam([soft_prompt], lr=lr)
-    loss_fn = torch.nn.KLDivLoss(log_target=True, reduction="batchmean")
+    loss_fn = loss_fn or torch.nn.KLDivLoss(log_target=True, reduction="batchmean")
 
     no_improvement_count = 0
     best_loss = float('inf')

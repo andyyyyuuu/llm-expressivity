@@ -33,12 +33,11 @@ class Targets(ABC):
         """
         Note: this constructor eagerly-loads targets from cache if it exists.
         """
-        self.seed = seed
+        self.seed = int(os.getenv("TARGETS_SEED", "216")) if seed is None else seed
         self.target_type = target_type
         self.vocab_size = module.vocab_size
         self.device = module.device
         self._targets = self.get()
-        self.seed = int(os.getenv("TARGETS_SEED", "216")) if seed is None else seed
 
     @abstractmethod
     def _generate(self) -> list[tuple[float, torch.Tensor]]:

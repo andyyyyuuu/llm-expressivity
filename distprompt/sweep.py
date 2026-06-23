@@ -7,6 +7,7 @@ from math import log
 from pathlib import Path
 from tqdm.auto import tqdm
 import torch
+from typing import Callable
 from .targets import Targets
 from .utils import set_seed
 from .modules import DownstreamModule, LayerIntervention
@@ -17,7 +18,7 @@ from huggingface_hub import login
 login(token=os.getenv("HF_TOKEN"))
 
 
-def run_experiment(save_path: str, module: DownstreamModule, targets: Targets) -> None: 
+def run_experiment(save_path: str, module: DownstreamModule, targets: Targets, loss_fn: Callable = None) -> None: 
 
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with open(save_path, "w", newline="") as f:
@@ -26,7 +27,7 @@ def run_experiment(save_path: str, module: DownstreamModule, targets: Targets) -
         f.flush()
         for i, (H, target) in enumerate(tqdm(targets, desc=f"sweeping targets")):
             set_seed(int(os.getenv("TRAINING_SEED", "216")) + i)
-            best_prompt, best_loss, early_stopped = tune_soft_prompt(module, H, target, lr=0.1, max_epochs=500, early_stop_patience=20, log_losses=False)
+            best_prompt, best_loss, early_stopped = tune_soft_prompt(module, H, target, loss_fn=loss_fn, lr=0.1, max_epochs=500, early_stop_patience=20, log_losses=False)
             writer.writerow([H, best_loss, int(early_stopped)])
             f.flush()
 
