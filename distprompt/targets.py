@@ -2,8 +2,12 @@ from abc import abstractmethod, ABC
 import torch
 from tqdm import tqdm
 from pathlib import Path
-from .utils import set_seed, find_device, entropy
 from math import log
+from typing import Iterator
+import os
+
+from .utils import set_seed, find_device, entropy
+from .modules import DownstreamModule
 
 
 def L(logits: torch.Tensor, targ_entropy: float) -> torch.Tensor:
@@ -25,11 +29,16 @@ CACHE_PATH = "saves/{target_type}_{vocab_size}_{seed}.pt"
 
 class Targets(ABC):
 
-    def __init__(self, target_type: str, vocab_size: int, seed: int) -> None:
+    def __init__(self, target_type: str, module: DownstreamModule, seed: int | None = None) -> None:
+        """
+        Note: this constructor eagerly-loads targets from cache if it exists.
+        """
         self.seed = seed
         self.target_type = target_type
-        self.vocab_size = vocab_size
-        self.device = find_device()
+        self.vocab_size = module.vocab_size
+        self.device = module.device
+        self._targets = self.get()
+        self.seed = int(os.getenv("TARGETS_SEED", "216")) if seed is None else seed
 
     @abstractmethod
     def _generate(self) -> list[tuple[float, torch.Tensor]]:
@@ -66,17 +75,31 @@ class Targets(ABC):
         torch.save({"targets": generated, "seed": self.seed, "target_type": self.target_type, "vocab_size": self.vocab_size}, cache_path)
         tqdm.write(f"saved {len(generated)} targets to {cache_path}")
         return generated
+    
+    def __len__(self) -> int:
+        return len(self._targets)
+    
+    def __getitem__(self, index: int) -> tuple[float, torch.Tensor]:
+        return self._targets[index]
+    
+    def __iter__(self) -> Iterator[tuple[float, torch.Tensor]]:
+        return iter(self._targets)
 
 
 
 class OptimEntropyGrid(Targets):
-    def __init__(self, vocab_size: int, seed: int, is_outlier: bool = False) -> None:
+    """
+    Generates targets by gradient based optimization for a grid of target entropies. 
+    """
+    def __init__(self, module: DownstreamModule, is_outlier: bool = False, seed: int | None = None) -> None:
         self.epsilon = 1e-4
         self.max_iters = 1e5
+        self.step = 0.05
         self.is_outlier = is_outlier
-        self.entropies = list(get_range(0, log(vocab_size), 0.05))
-        target_type = "optimentropygrid_outlier" if is_outlier else "optimentropygrid_vanilla"
-        super().__init__(target_type, vocab_size, seed)
+        self.entropies = list(get_range(0, log(module.vocab_size), 0.05))
+        target_type = "optimentropygrid-outlier" if is_outlier else "optimentropygrid-vanilla"
+        target_type += f"-st{self.step}"
+        super().__init__(target_type, module, seed)
     
     def _optimize_vanilla(self, target_entropy: float) -> torch.Tensor:
         param = torch.nn.Parameter(torch.randn(self.vocab_size, device=self.device, dtype=torch.float32))
@@ -111,3 +134,21 @@ class OptimEntropyGrid(Targets):
         return targets
 
 
+class GaussianLogits(Targets):
+    """
+    Generates targets by sampling from a Gaussian distribution.
+    """
+    def __init__(self, module: DownstreamModule, samples: int, scale: float = 1.0, seed: int | None = None) -> None:
+        self.samples = samples
+        self.scale = scale
+        target_type = f"gaussianlogits-sc{scale:.2f}-n{samples}"
+        super().__init__(target_type, module, seed)
+    
+    def _generate(self) -> list[tuple[float, torch.Tensor]]:
+        targets = []
+        for i in range(self.samples):
+            set_seed(self.seed + i)
+            target_logits = self.scale * torch.randn(self.vocab_size, device=self.device, dtype=torch.float32)
+            H = entropy(torch.softmax(target_logits, dim=-1), dim=-1).item()
+            targets.append((H, target_logits))
+        return targets
