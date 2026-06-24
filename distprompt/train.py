@@ -17,10 +17,11 @@ if DO_WANDB:
 
 
 def entropy_only_loss(x: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    return (log_entropy(x, dim=-1) - log_entropy(target, dim=-1)) ** 2
+    target_entropy = target if target.ndim == 0 else log_entropy(target, dim=-1)
+    return (log_entropy(x, dim=-1) - target_entropy) ** 2
 
 
-def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_logits: torch.Tensor, loss_fn: Callable = None, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float, bool]:
+def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_logits: torch.Tensor | None, loss_fn: Callable = None, lr: float=0.1, max_epochs: int=500, early_stop_patience: int=20, log_losses: bool=True) -> tuple[torch.nn.Parameter, float, bool]:
     
     if DO_WANDB:
         wandb.init(project="expressivity-of-llms-training", 
@@ -31,8 +32,13 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
                        "lr": lr,
                    })
 
-    target_logits.requires_grad = False
-    target_log_probs = torch.log_softmax(target_logits, dim=-1)
+    if target_logits is None:
+        if loss_fn is None:
+            raise ValueError("target_logits must be provided when using the default KL loss")
+        target_for_loss = torch.tensor(target_entropy, device=module.device, dtype=torch.float32)
+    else:
+        target_logits.requires_grad = False
+        target_for_loss = torch.log_softmax(target_logits, dim=-1).unsqueeze(0)
     
     soft_prompt = torch.nn.Parameter(
         torch.randn(module.input_shape, device=module.device, dtype=torch.float32),
@@ -50,7 +56,8 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
 
     for epoch in tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}", leave=False):
         log_probs = module.forward(soft_prompt)
-        loss = loss_fn(log_probs.unsqueeze(0), target_log_probs.unsqueeze(0))
+        loss = loss_fn(log_probs.unsqueeze(0), target_for_loss)
+        current_prompt = soft_prompt.detach().clone()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -59,7 +66,7 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
         
         if loss.item() < best_loss:
             best_loss = loss.item()
-            best_prompt = soft_prompt.detach().clone()
+            best_prompt = current_prompt
             no_improvement_count = 0
         else:
             no_improvement_count += 1
@@ -85,7 +92,14 @@ if __name__ == "__main__":
     max_epochs = 500
     early_stop_patience = 20
     target_logits = optimize_vanilla(target_entropy, module.vocab_size, 1e-4, device=module.device)
-    best_prompt, best_loss, early_stopped = tune_soft_prompt(module, target_entropy, target_logits, lr, max_epochs, early_stop_patience)
+    best_prompt, best_loss, early_stopped = tune_soft_prompt(
+        module,
+        target_entropy,
+        target_logits,
+        lr=lr,
+        max_epochs=max_epochs,
+        early_stop_patience=early_stop_patience,
+    )
     print(f"Best prompt: {best_prompt}")
     print(f"Best loss: {best_loss}")
     print(f"Early stopped: {early_stopped}")

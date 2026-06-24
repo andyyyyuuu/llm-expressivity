@@ -8,6 +8,7 @@ import os
 
 from .utils import set_seed, find_device, entropy
 from .modules import DownstreamModule
+from .train import tune_soft_prompt, entropy_only_loss
 
 
 def L(logits: torch.Tensor, targ_entropy: float) -> torch.Tensor:
@@ -123,7 +124,7 @@ class OptimEntropyGrid(Targets):
 
     def _generate(self) -> list[tuple[float, torch.Tensor]]:
         targets = []
-        for i, H in enumerate(tqdm(self.entropies, desc="Generating targets")):
+        for i, H in enumerate(tqdm(self.entropies, total=len(self.entropies), desc="Generating targets")):
             set_seed(self.seed + i)
             if self.is_outlier:
                 target = self._optimize_outlier(H)
@@ -150,4 +151,25 @@ class GaussianLogits(Targets):
             target_logits = self.scale * torch.randn(self.vocab_size, device=self.device, dtype=torch.float32)
             H = entropy(torch.softmax(target_logits, dim=-1), dim=-1).item()
             targets.append((H, target_logits))
+        return targets
+
+
+class ReachableEntropyGrid(Targets):
+    """
+    Generates targets by end-to-end optimization on LLM for easy-to-reach distributions
+    taking a particular set of fixed entropy values. 
+    """
+
+    def __init__(self, module: DownstreamModule, seed: int | None = None) -> None:
+        self.entropies = list(get_range(0, log(module.vocab_size), 0.05))
+        self.module = module
+        super().__init__("reachableentropygrid", module, seed)
+
+    def _generate(self) -> list[tuple[float, torch.Tensor]]:
+        targets = []
+        for i, H in tqdm(enumerate(self.entropies), total=len(self.entropies), desc="Tuning targets"):
+            set_seed(self.seed + i)
+            best_prompt, best_loss, early_stopped = tune_soft_prompt(self.module, H, None, loss_fn=entropy_only_loss, lr=0.1, max_epochs=500, early_stop_patience=20, log_losses=False)
+            target_log_probs = self.module.forward(best_prompt).detach()
+            targets.append((H, target_log_probs))
         return targets
