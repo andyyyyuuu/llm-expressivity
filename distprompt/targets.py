@@ -6,7 +6,7 @@ from math import log
 from typing import Iterator
 import os
 
-from .utils import set_seed, find_device, entropy
+from .utils import set_seed, find_device, entropy, log_entropy
 from .modules import DownstreamModule
 from .train import tune_soft_prompt, entropy_only_loss
 
@@ -171,5 +171,6 @@ class ReachableEntropyGrid(Targets):
             set_seed(self.seed + i)
             best_prompt, best_loss, early_stopped = tune_soft_prompt(self.module, H, None, loss_fn=entropy_only_loss, lr=0.1, max_epochs=500, early_stop_patience=20, log_losses=False)
             target_log_probs = self.module.forward(best_prompt).detach()
-            targets.append((H, target_log_probs))
+            actual_H = log_entropy(target_log_probs, dim=-1).item()
+            targets.append((actual_H, target_log_probs))
         return targets
