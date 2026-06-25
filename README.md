@@ -24,7 +24,7 @@ To run an experiment, run [`main.ipynb`](main.ipynb).
 
 ## Experiments
 
-The experiments in this repo are based on soft prompt tuning on vanilla distributions, a method laid out in [Wang et al. (2025)](https://arxiv.org/abs/2505.12244). My own figures can be found in [`results/`](results/)
+The experiments in this repo build upon soft prompt tuning on vanilla distributions, a method laid out in [Wang et al. (2025)](https://arxiv.org/abs/2505.12244). My own figures can be found in [`results/`](results/)
 
 I first partially replicate the results of [Figure 4 (c)](https://arxiv.org/html/2505.12244v2#S5.F4). There is clearly a middle range of entropies that tuning LLM soft prompts struggles to express. 
 
@@ -35,18 +35,26 @@ I first partially replicate the results of [Figure 4 (c)](https://arxiv.org/html
 In my own analogous experiments, I tune injected values in the hidden layers of the transformer and investigate their expressivity. I find that the bottleneck on expressivity follows a nearly identical pattern even when I tune the output of the final layer of the transformer, and even when the intervention is placed after RMSNorm (shown below). This suggests that the cause of the phenomenon can be narrowed down to the final computations in a transformer (unembedding transform and softmax) and are largely not due to the multi-headed attention or other earlier components. 
 
 
-<img width="332" height="312" alt="" src="https://github.com/user-attachments/assets/b25b46f9-2503-46b0-a6ab-159ece4a1a5f" />
-<img width="332" height="312" alt="Screenshot 2026-06-15 at 5 15 59 PM" src="https://github.com/user-attachments/assets/f3f22981-560a-4a68-ae92-5618c527ac23" />
+<img height="500" alt="output" src="https://github.com/AndyyyYuuu/llm-expressivity/blob/main/results/figures/vanilla.png" />
+
 
 One curiousity worth pointing out is that although the shapes of the curves stayed identical when expressivity was measured from the embedding output v. the final layer's output, the faint downward trendline in the background of the former's scatter plot is not seen in the latter's. Spooky. 
 
 
 ### Toy Linear + Softmax Model
-As a final check, I perform the experiment on a randomly initialized (by `torch.randn` standard normal distribution) linear layer and softmax, written as a standalone module instead of injected into Llama. The phenomenon is partially produced between target entropies of 6 and 10 nats, but a noisy peak occurs for lower values.
+As a minimal check, I perform the experiment on a randomly initialized (by `torch.randn` standard normal distribution) linear layer and softmax, written as a standalone module instead of injected into Llama. The phenomenon is partially produced between target entropies of 6 and 10 nats, but a noisy peak occurs for lower values.
 
-<img width="590" height="483" alt="output" src="https://github.com/user-attachments/assets/f68801ae-5e5d-44f5-ab80-9bac64f1ae80" />
+<img height="400" alt="output" src="https://github.com/AndyyyYuuu/llm-expressivity/blob/main/results/figures/linsoftmax.png" />
 
-In any case, this seems to be a fairly minimal setup for reproducing the effect. I have not yet ablated the unembedding matrix as that is the location of the information bottleneck. 
+In any case, this seems to be a fairly minimal setup for reproducing the effect. 
+
+### Constructing Intentionally Easy Distributions
+
+Since the tuned vanilla distributions were optimized using gradient descent to match entropy, they may suffer from coverage bias. In other words, there probably exist many distributions with the particular entropy that are difficult/impossible to reach with this method. 
+
+To investigate this, I constructed distributions of various entropies that were intentionally easy to approximate. 
+
+Give me more time to think about this. It will be updated.
 
 ## Discussion
 
