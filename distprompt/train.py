@@ -38,7 +38,7 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
         target_for_loss = torch.tensor(target_entropy, device=module.device, dtype=torch.float32)
     else:
         target_logits.requires_grad = False
-        target_for_loss = torch.log_softmax(target_logits, dim=-1).unsqueeze(0)
+        target_for_loss = torch.log_softmax(target_logits.float(), dim=-1).unsqueeze(0)
     
     soft_prompt = torch.nn.Parameter(
         torch.randn(module.input_shape, device=module.device, dtype=torch.float32),
@@ -55,24 +55,25 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
     early_stopped = False
 
     for epoch in tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}", leave=False):
-        log_probs = module.forward(soft_prompt)
+        log_probs = module.forward(soft_prompt).float()
         loss = loss_fn(log_probs.unsqueeze(0), target_for_loss)
         current_prompt = soft_prompt.detach().clone()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        loss_value = max(loss.item(), 0.0)
         if log_losses and epoch % 10 == 0:
-            tqdm.write(f"Epoch {epoch}, Loss: {loss.item()}")
+            tqdm.write(f"Epoch {epoch}, Loss: {loss_value}")
         
-        if loss.item() < best_loss:
-            best_loss = loss.item()
+        if loss_value < best_loss:
+            best_loss = loss_value
             best_prompt = current_prompt
             no_improvement_count = 0
         else:
             no_improvement_count += 1
         if DO_WANDB:
             wandb.log({
-                "loss": loss.item(),
+                "loss": loss_value,
             })
         if no_improvement_count >= early_stop_patience:
             if log_losses:
