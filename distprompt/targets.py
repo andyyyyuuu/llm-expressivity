@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABC
 import torch
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from pathlib import Path
 from math import log
 from typing import Iterator

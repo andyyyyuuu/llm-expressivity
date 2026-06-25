@@ -54,7 +54,8 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
 
     early_stopped = False
 
-    for epoch in tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}", leave=False):
+    progress = tqdm(range(max_epochs), desc=f"training H={target_entropy:.2f}", leave=False)
+    for epoch in progress:
         log_probs = module.forward(soft_prompt).float()
         loss = loss_fn(log_probs.unsqueeze(0), target_for_loss)
         current_prompt = soft_prompt.detach().clone()
@@ -80,6 +81,7 @@ def tune_soft_prompt(module: DownstreamModule, target_entropy: float, target_log
                 tqdm.write(f"Early stopping at epoch {epoch}")
             early_stopped = True
             break
+    progress.close()
     return best_prompt, best_loss, early_stopped
 
 
